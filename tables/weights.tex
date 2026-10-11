@@ -1,0 +1,18 @@
+\begin{table}[tb]
+\caption{Frozen scene- and mode-specific information weights. OFF disables the observer and every auxiliary branch.}\label{tab:weights}
+\centering\small
+\begin{tabular}{llrrr}
+\toprule
+Scene & Mode & $\alpha_G$ & $\alpha_V$ & $\alpha_L$ \\
+\midrule
+MH & G & 16 & -- & -- \\
+MH & V & -- & 49 & -- \\
+MH & L & -- & -- & 6 \\
+MH & GVL & 2 & 49 & 6 \\
+Vicon & G & 1 & -- & -- \\
+Vicon & V & -- & 6 & -- \\
+Vicon & L & -- & -- & 6 \\
+Vicon & GVL & 1 & 1 & 1 \\
+\bottomrule
+\end{tabular}
+\end{table}
