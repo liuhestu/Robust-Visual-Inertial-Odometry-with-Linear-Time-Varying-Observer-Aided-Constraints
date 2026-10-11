@@ -7,6 +7,8 @@ First English manuscript draft in the Springer LNCS template.
 - Email: **liuhe2024@hust.edu.cn**
 - Main source: [main.tex](main.tex)
 - Compiled draft: [output/manuscript.pdf](output/manuscript.pdf)
+- Chinese reading version: [output/manuscript_zh.pdf](output/manuscript_zh.pdf)
+- Chinese source: [main_zh.tex](main_zh.tex)
 - Bibliography: [references.bib](references.bib)
 
 ## Structure
@@ -30,6 +32,18 @@ make
 This regenerates six tables from the frozen JSON files, compiles citations and cross-references, and writes output/manuscript.pdf.
 
 For Overleaf, upload this repository and select main.tex as the main document. Generated tables/*.tex are committed, so Python is not required on Overleaf.
+
+### 中文阅读版
+
+中文版本逐段对应英文初稿，保留相同的公式、标签、实验数值和结论，并翻译表头、图注及图占位说明。参考文献保留原始文献题名。英文稿仍是投稿稿件的主版本。
+
+中文编译需要 XeLaTeX、xeCJK 和 Fandol 字体（TeX Live 的 texlive-lang-chinese 提供这些依赖）：
+
+```bash
+make chinese
+```
+
+在 Overleaf 中选择 main_zh.tex 为主文件，并将编译器设为 XeLaTeX。中文表格可通过 scripts/generate_chinese_tables.py 从英文数值表自动生成。
 
 ## Evidence and formula provenance
 

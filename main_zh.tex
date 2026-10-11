@@ -1,0 +1,362 @@
+% 中文阅读版初稿；实验数值由 data/*.json 生成。
+\documentclass[a4paper,runningheads]{llncs}
+\usepackage{fontspec,xeCJK}
+\setmainfont{Latin Modern Roman}
+\setsansfont{Latin Modern Sans}
+\setmonofont{Latin Modern Mono}
+\setCJKmainfont{FandolSong-Regular}[BoldFont=FandolSong-Bold,ItalicFont=FandolKai-Regular]
+\setCJKsansfont{FandolHei-Regular}[BoldFont=FandolHei-Bold]
+\setCJKmonofont{FandolFang-Regular}
+\renewcommand{\abstractname}{摘要}
+\renewcommand{\keywordname}{关键词：}
+\renewcommand{\figurename}{图}
+\renewcommand{\tablename}{表}
+\renewcommand{\refname}{参考文献}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{graphicx,booktabs}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
+\usepackage{xurl}
+\usepackage[hidelinks]{hyperref}
+\hypersetup{pdftitle={线性时变观测器辅助约束的鲁棒视觉惯性里程计},pdfauthor={liuhe},pdfsubject={中文阅读版初稿},pdfkeywords={VIO, LTV Observer, ESKF, MSCKF}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\sk}[1]{[#1]_{\times}}
+\newcommand{\diag}{\operatorname{diag}}
+\newcommand{\tr}{\operatorname{tr}}
+\newcommand{\Exp}{\operatorname{Exp}}
+\newcommand{\norm}[1]{\left\lVert #1\right\rVert}
+\newcommand{\placeholder}[1]{\par\smallskip\noindent\textit{[图占位： #1]}\par\smallskip}
+\emergencystretch=1em
+
+\begin{document}
+\title{线性时变观测器辅助约束的鲁棒视觉惯性里程计}
+\titlerunning{LTV 观测器辅助的视觉惯性里程计}
+\author{liuhe}
+\authorrunning{liuhe}
+\institute{华中科技大学，中国武汉\\
+\email{liuhe2024@hust.edu.cn}}
+\maketitle
+
+\begin{abstract}
+视觉惯性里程计结合相机观测与惯性测量估计运动，但附加运动约束的效果取决于约束形式和融合强度。本文研究将线性时变（linear time-varying，LTV）观测器作为多状态约束卡尔曼滤波器的辅助估计器。通过将机体系下的重力、速度和路标估计转换为三类误差状态测量模型，构建辅助约束：重力方向约束位于二维切平面，速度约束耦合姿态与世界系速度，路标约束连接当前位姿和历史位姿克隆。通过有效性检查的辅助残差与视觉残差在同一先验下组装，并执行一次联合卡尔曼更新。有界特征管理接口和逐帧路标信息预算控制辅助信息的供给。在十条 EuRoC 序列上，采用固定的场景及模式参数，评价轨迹误差、相对运动误差、局部窗口误差、实际更新次数和串行运行开销。速度融合与完整融合在全部四条受测 Machine Hall 序列上降低了位置 ATE，平均相对降幅分别为 7.410\% 和 7.578\%；Vicon 场景的变化较小。实测计算开销较大，说明当前实现需要权衡精度收益与计算成本。
+\keywords{视觉惯性里程计 \and 线性时变观测器 \and 误差状态卡尔曼滤波器 \and 辅助约束}
+\end{abstract}
+
+\section{引言}
+可靠的运动估计是机器人在缺乏外部定位系统时自主运行的基础。相机提供几何约束，惯性测量单元（IMU）提供高频旋转和平移运动信息。两者的互补性推动了视觉惯性里程计（VIO）的发展。然而，运动估计仍受到特征几何分布、运动激励、惯性偏差以及各类融合约束相对强度的影响。
+
+基于滤波的 VIO 维护运动状态及其不确定性，并利用图像观测修正惯性传播。双目多状态约束卡尔曼滤波器（S-MSCKF）利用历史相机位姿形成视觉约束，无需将每个特征长期保留在滤波状态中~\cite{sun2018}。OpenVINS 提供了该方法的模块化实现，包括首次估计雅可比（FEJ）、标定后的传感器模型及灵活的状态管理~\cite{geneva2020}。这些系统适合用于研究辅助测量，因为新增残差块能够直接关联现有误差状态变量。
+
+另一种思路是在运动的机体系中描述运动量。Wang 和 Tayebi~\cite{wang2024} 提出了利用惯性输入和方位观测估计机体系路标位置、速度与重力的 LTV 观测器。该表示无需在相应的线性状态中显式包含姿态，因此可以将这些估计量作为已有 VIO 系统的辅助约束，同时保留后者的惯性偏差估计和多视图视觉更新。
+
+实际问题在于如何将观测器输出转化为可用的误差状态约束。重力向量应约束方向，避免引入人为的幅值测量；机体系速度观测同时依赖姿态和世界系速度；路标估计需要一致的时间锚点和坐标变换。此外，在某一先验下构造的测量不能在先验改变后继续提交。这些要求促成了本文的统一融合接口。
+
+本文研究三个辅助分支，分别记为 G、V 和 L，以及它们的完整组合 GVL。系统沿用现有双目前端，并增设 LTV 辅助估计器，无需额外传感器或外部地图。EuRoC 数据集~\cite{burri2016}上的实验同时考察融合的精度收益与计算成本。下文依次介绍理论基础、融合方法、实验与总结。本文的主要贡献如下：
+\begin{enumerate}
+\item 构建 LTV 观测器辅助的重力方向、机体系速度与时间锚定路标位置测量模型，推导与 VIO 误差定义一致的雅可比。
+\item 设计统一更新接口，在同一先验下组装视觉残差和通过检查的辅助残差，并结合有界特征管理、分支有效性检查和路标信息预算。
+\item 采用固定的场景参数开展可复现的五模式实验，报告全轨迹与局部误差、辅助分支的实际使用情况以及串行计算开销。
+\end{enumerate}
+
+\section{理论基础}
+\subsection{坐标系、惯性输入与方位几何}
+以 $\{W\}$、$\{B\}$ 和 $\{C\}$ 分别表示世界系、IMU 机体系与相机系。$R\in SO(3)$ 将世界系向量映射到机体系。位置 $p$ 和速度 $v$ 均在 $\{W\}$ 中表示，$g_W=[0,0,-g]^\top$ 为物理重力。对 $u\in\R^3$，反对称矩阵 $\sk{u}$ 满足 $\sk{u}w=u\times w$。帽号表示估计值，上标 $-$ 和 $+$ 分别表示先验与后验。
+
+对经过标定和偏差修正的 IMU 输入 $\omega$ 与 $a$，名义运动学为
+\begin{equation}
+ \dot R=-\sk{\omega}R,\qquad
+ \dot p=v,\qquad
+ \dot v=R^\top a+g_W .
+ \label{eq:kinematics}
+\end{equation}
+其中 $a$ 为比力，并非已经去除重力的加速度。偏差修正使用当前 VIO 偏差估计与固定传感器标定参数，且仅执行一次。
+
+令 $R_{BC}$ 将相机系向量映射到机体系，$p_{BC}$ 为相机中心在机体系中的位置。对于静态世界点 $P_i$，定义其机体系位置为
+\begin{equation}
+ \ell_i=R(P_i-p),\qquad
+ P_i^C=R_{BC}^{\top}(\ell_i-p_{BC}).
+ \label{eq:pointframes}
+\end{equation}
+由标定后的图像坐标得到单位方位向量
+\begin{equation}
+ b_i=\frac{[u_i^{n},v_i^{n},1]^\top}
+ {\norm{[u_i^{n},v_i^{n},1]^\top}},\qquad d_i=R_{BC}b_i .
+\end{equation}
+投影矩阵 $\Pi_i=I_3-d_id_i^\top$ 消去未知深度，得到线性关系
+\begin{equation}
+ y_i=\Pi_i p_{BC}=\Pi_i\ell_i .
+ \label{eq:bearing}
+\end{equation}
+在构造观测器输入之前，所有相机外参和时间戳均按照统一的机体系约定处理。
+\placeholder{世界系、IMU 机体系与相机系；相机偏移 $p_{BC}$、单位方位 $b_i$ 及机体系路标 $\ell_i$。}
+
+\subsection{机体系 LTV 观测器}
+根据文献~\cite{wang2024}的机体系表示，引入 $v_B=Rv$ 和 $\eta=Rg_W$。它们与静态路标的动力学为
+\begin{equation}
+ \dot\ell_i=-\sk{\omega}\ell_i-v_B,\quad
+ \dot v_B=-\sk{\omega}v_B+\eta+a,\quad
+ \dot\eta=-\sk{\omega}\eta .
+ \label{eq:ltvdynamics}
+\end{equation}
+对 $N$ 个受管理路标，令
+\begin{equation}
+ z=[\ell_1^\top,\ldots,\ell_N^\top,v_B^\top,\eta^\top]^\top,\qquad
+ \dot z=Az+Ba,\quad y=Cz .
+ \label{eq:ltvstate}
+\end{equation}
+记 $\Omega_N=\diag(\sk{\omega},\ldots,\sk{\omega})$、$\Gamma=\bm{1}_N\otimes I_3$，相应矩阵为
+\begin{equation}
+ A=\begin{bmatrix}
+ -\Omega_N&-\Gamma&0\\
+ 0&-\sk{\omega}&I_3\\
+ 0&0&-\sk{\omega}
+ \end{bmatrix},\quad
+ B=\begin{bmatrix}0\\I_3\\0\end{bmatrix},\quad
+ C=\begin{bmatrix}\diag(\Pi_1,\ldots,\Pi_N)&0&0\end{bmatrix}.
+ \label{eq:ltvmatrices}
+\end{equation}
+仅当前观测到的路标参与 $C$ 的测量行。观测器及其 Riccati 权重矩阵 $P_L$ 满足
+\begin{align}
+ \dot{\hat z}&=A\hat z+Ba+K_L(y-C\hat z),&
+ K_L&=P_LC^\top Q_L, \label{eq:observer}\\
+ \dot P_L&=AP_L+P_LA^\top-P_LC^\top Q_LCP_L+V_L .
+ \label{eq:riccati}
+\end{align}
+正定设计矩阵 $Q_L$ 与 $V_L$ 控制修正和正则化。本文使用该观测器的路标、速度和重力输出；文献~\cite{wang2024}中另行提出的非线性位姿观测器不属于本文融合系统。
+
+实现中在 IMU 样本之间进行传播，并在图像事件处施加方位修正。LTV 状态和 Riccati 项采用前向欧拉积分，修正过程使用受限子步。特征新增与移除会调整路标状态块的维度，同时保留仍存活的路标块及速度、重力状态。这一过程与在主 VIO 滤波器中添加 SLAM 路标不同。
+
+\subsection{误差状态滤波与 MSCKF 视觉约束}
+VIO 状态包含当前惯性状态以及历史 IMU 位姿克隆：
+\begin{equation}
+ x=(R,p,v,b_g,b_a,x_{c_1},\ldots,x_{c_M}),\qquad
+ \delta x_I=[\delta\theta^\top,\delta p^\top,\delta v^\top,
+              \delta b_g^\top,\delta b_a^\top]^\top .
+\end{equation}
+姿态误差定义为
+\begin{equation}
+ R_{\mathrm{true}}=\Exp(-\sk{\delta\theta})\hat R
+       \simeq (I_3-\sk{\delta\theta})\hat R .
+ \label{eq:attitudeerror}
+\end{equation}
+向量状态采用加性误差。对应的线性化惯性模型为 $\delta\dot x_I=F\delta x_I+Gn_I$。离散化得到状态转移矩阵 $\Phi_k$ 与积分过程噪声 $Q_k$，因此
+\begin{equation}
+ P_{I,k+1}^-=\Phi_kP_{I,k}^+\Phi_k^\top+Q_k .
+ \label{eq:covprop}
+\end{equation}
+与克隆状态的交叉协方差也进行一致传播。在图像事件处，通过增广雅可比克隆当前位姿，以保留多视图约束所需的相关性~\cite{sun2018,geneva2020}。
+
+对在多个位姿下被观测的特征，线性化得到
+\begin{equation}
+ r_f=H_x\delta x+H_f\delta P_f+n_f .
+\end{equation}
+选取满足 $U^\top H_f=0$ 的正交左零空间基 $U$，消去特征误差：
+\begin{equation}
+ r_{\mathrm{vis}}=U^\top r_f,\qquad
+ H_{\mathrm{vis}}=U^\top H_x,\qquad
+ R_{\mathrm{vis}}=U^\top R_fU .
+ \label{eq:msckf}
+\end{equation}
+通过检查的特征残差块在 EKF 更新前进行堆叠和压缩。FEJ 在保存的首次估计处计算所需雅可比，而残差使用当前状态。本文实验固定标定参数并关闭原生 SLAM 路标；特征仍被跟踪和三角化，用于构造 MSCKF 约束。
+
+\section{LTV 观测器辅助的 ESKF 融合}
+\subsection{同一先验下的融合接口}
+图~\ref{fig:framework}展示了系统集成方式。IMU 适配器利用覆盖目标时刻的相邻样本和经过标定、偏差修正的输入，将观测器推进至图像时刻。特征接口提供跟踪方位和几何初始化。观测器输出 $\hat\eta$、$\hat v_B$ 和 $\hat\ell_i$，主滤波器提供其先验状态、协方差及仍存活的位姿克隆。
+
+\begin{figure}[tb]
+\centering
+\begin{tikzpicture}[font=\small,
+ box/.style={draw,rounded corners=2pt,align=center,minimum height=9mm,text width=42mm},
+ flow/.style={-{Latex[length=2mm]},thick}]
+\node[box,text width=72mm] (input) at (0,0) {标定后的 IMU 与双目特征轨迹};
+\node[box] (vio) at (-2.5,-1.45) {ESKF 传播\\与位姿克隆};
+\node[box] (ltv) at (2.5,-1.45) {受管理的 LTV 观测器\\$\hat\eta,\ \hat v_B,\ \hat\ell_i$};
+\node[box] (vis) at (-2.5,-2.9) {MSCKF 视觉残差\\与压缩};
+\node[box] (aux) at (2.5,-2.9) {G/V/L 残差\\有效性与信息预算检查};
+\node[box,text width=72mm] (joint) at (0,-4.35) {同一先验下组装残差\\一次联合 EKF 更新};
+\node[box,text width=72mm] (out) at (0,-5.8) {更新后的运动状态与协方差};
+\draw[flow] (input.south) -- (vio.north);
+\draw[flow] (input.south) -- (ltv.north);
+\draw[flow] (vio) -- (vis);
+\draw[flow] (ltv) -- (aux);
+\draw[flow] (vis.south) -- (joint.north west);
+\draw[flow] (aux.south) -- (joint.north east);
+\draw[flow] (joint) -- (out);
+\end{tikzpicture}
+\caption{LTV 观测器辅助的 VIO。集成接口提供几何初值、惯性偏差和共同的滤波先验。各辅助分支可独立被拒绝。}
+\label{fig:framework}
+\end{figure}
+
+每个辅助块由 $(r_j,H_j,R_j)$ 和一组有序状态变量描述。雅可比列映射至主滤波器的原生状态，共享变量不会重复。帧记录标识图像时间、对应 IMU 时间、观测器纪元与序列号。提交之前，实现会核验主状态先验、FEJ 值、协方差和克隆集合是否仍与构造残差时一致。通过检查的记录仅消费一次。
+
+所有分支统一采用残差定义 $r=z_{\mathrm{aux}}-h(\hat x)$，以及线性化关系 $r\simeq H\delta x+n$。因此，$H$ 是预测函数 $h$ 的导数，而非固定测量值条件下残差函数的导数。下文上标 $f$ 表示 FEJ 线性化值；残差在当前先验处计算。
+
+\subsection{重力方向约束}
+令 $\gamma=g_W/\norm{g_W}$，$u_L=\hat\eta/\norm{\hat\eta}$。选取 $T\in\R^{3\times2}$ 作为垂直于 $d^f=R^f\gamma$ 的切平面正交基，满足 $T^\top d^f=0$。在线性化过程中固定该基，得到
+\begin{equation}
+ r_G=T^\top(u_L-\hat R\gamma),\qquad
+ H_{G,\theta}=T^\top\sk{R^f\gamma}.
+ \label{eq:gravity}
+\end{equation}
+其余直接雅可比块为零。二维残差约束重力方向，避免将观测器的重力幅值作为额外观测。有效协方差为
+\begin{equation}
+ R_G=\sigma_G^2I_2,\qquad
+ \sigma_G=\frac{\sigma_{G,0}}{\sqrt{\alpha_G}},
+ \label{eq:gnoise}
+\end{equation}
+角度使用时转换为弧度。受测基础值为 $\sigma_{G,0}=10^\circ$。增大 $\alpha_G$ 改变的是信息权重，并非直接将卡尔曼增益乘以该系数。
+
+\subsection{机体系速度约束}
+将主滤波器的世界系速度变换至机体系，与观测器速度比较：
+\begin{equation}
+ r_V=\hat v_B-\hat R\hat v,\qquad
+ H_V=\begin{bmatrix}
+ \sk{R^fv^f}&0&R^f&0&0&0_{\mathrm{clones}}
+ \end{bmatrix}.
+ \label{eq:velocity}
+\end{equation}
+姿态列与速度列均不可缺少。例如，保持 $v$ 不变而改变姿态，仍会改变预测的机体系速度。采用
+\begin{equation}
+ R_V=\sigma_V^2I_3,\qquad
+ \sigma_V=\frac{\sigma_{V,0}}{\sqrt{\alpha_V}},\qquad
+ \sigma_{V,0}=1~\mathrm{m/s}.
+ \label{eq:vnoise}
+\end{equation}
+尽管位置和惯性偏差不直接出现在 $H_V$ 中，修正仍可通过主滤波器的交叉协方差影响这些变量。
+
+\subsection{时间锚定的路标约束}
+对于跟踪路标 $i$，在历史图像时刻 $t_a$ 存储其观测器位置 $\hat\ell_{i,a}$，对应 IMU 位姿克隆必须仍存在于滤波器中。给定当前位姿 $(R_t,p_t)$ 与锚定位姿 $(R_a,p_a)$，其当前机体系位置预测为
+\begin{equation}
+ h_{L,i}(x)=R_t\big(R_a^\top\hat\ell_{i,a}+p_a-p_t\big),\qquad
+ r_{L,i}=\hat\ell_{i,t}^{-}-h_{L,i}(\hat x).
+ \label{eq:landmark}
+\end{equation}
+其中 $\hat\ell_{i,t}^{-}$ 在观测器惯性传播之后、当前方位修正之前截取；历史锚点是此前保存的相机更新后观测器快照。在对主状态预测求导时，两端路标估计均保持固定。对于局部列顺序 $[\delta\theta_t,\delta p_t,\delta\theta_a,\delta p_a]$，预测雅可比为
+\begin{equation}
+ H_{L,i}=
+ \begin{bmatrix}
+ \sk{h_{L,i}^f}&-R_t^f&
+ -R_t^f(R_a^f)^\top\sk{\hat\ell_{i,a}}&R_t^f
+ \end{bmatrix}.
+ \label{eq:landmarkH}
+\end{equation}
+该分支约束相对位姿几何，既不将 $\hat\ell_{i,a}$ 视为已知世界路标，也不将观测器路标加入主 ESKF 状态。
+
+为使辅助信息供给有界且可复现，候选路标必须成熟、满足速度就绪条件、关联存活锚点并通过几何有效性检查。固定实现要求
+\begin{equation}
+ 0.20\leq t-t_a\leq0.55~\mathrm{s},\qquad
+ \frac{\norm{\hat\ell_{i,t}^{-}-h_{L,i}(\hat x)}}
+ {\max(\norm{h_{L,i}(\hat x)},0.1~\mathrm{m})}\leq0.02 .
+ \label{eq:lvalid}
+\end{equation}
+此外检查相机正深度和特征关联。候选按确定性规则选择，每帧最多使用 $m_{\max}=2$ 个点。
+
+路标分支采用与距离及锚点年龄有关的有效方差：
+\begin{align}
+ s_{i,0}^2&=\big(\sigma_{L,\min}+0.02\norm{\hat\ell_{i,t}^{-}}\big)^2
+       \left(1+\frac{t-t_a}{0.55~\mathrm{s}}\right),\\
+ q_i&=\tr(H_{L,i}P_i^-H_{L,i}^{\top}),\qquad
+ s_i^2=\max\left(s_{i,0}^2,\frac{q_i}{\beta_L/m_{\max}}\right),\qquad
+ R_{L,i}=s_i^2 I_3 .
+ \label{eq:lbudget}
+\end{align}
+$P_i^-$ 是当前位姿与锚定位姿状态块的主滤波边缘协方差。信息上限保证 $q_i/s_i^2\leq\beta_L/m_{\max}$。系统在计算卡尔曼增益之前调整方差，而不是在更新之后裁剪状态修正量。基础设置为 $\sigma_{L,\min}=0.5$ m、$\beta_L=0.01$。在路标强度 $\alpha_L$ 下，它们分别变为 $0.5/\sqrt{\alpha_L}$ m 和 $0.01\alpha_L$。这是一种有效权重规则，并不将观测器 Riccati 矩阵直接替代测量噪声。
+
+\subsection{有效性检查与联合更新}
+观测器特征池上限为 30 个路标，配置要求至少 15 个路标，初始预热需要 20 次健康图像修正。初始化优先使用双目几何，其次使用时序几何。特征身份包含观测器纪元和出生信息，以避免已移除轨迹或复用标识符关联到旧锚点。
+
+辅助提交要求时间戳偏差不超过 $10^{-6}$ s、观测器快照有效、分支就绪、状态值有限，以及新息协方差正定。重力还需满足 $\norm{\hat\eta}\in[7,12]$ m/s$^2$，方向差不超过 $30^\circ$。G 与 V 分别通过归一化新息平方（NIS）进行门控：
+\begin{equation}
+ \nu_j=r_j^\top(H_jP^-H_j^\top+R_j)^{-1}r_j\leq\tau_j ,
+ \label{eq:nis}
+\end{equation}
+其中 $\tau_G=9.21034$、$\tau_V=11.34487$，分别对应二维和三维残差的 99\% 卡方阈值。路标分支采用上述候选资格与信息预算规则。受测配置未启用可选的 Huber 重加权。
+
+视觉压缩和分支筛选后，通过检查的残差块组装为
+\begin{equation}
+ r=\begin{bmatrix}r_{\mathrm{vis}}\\r_G\\r_V\\r_L\end{bmatrix},\qquad
+ H=\begin{bmatrix}H_{\mathrm{vis}}\\H_G\\H_V\\H_L\end{bmatrix},\qquad
+ R_{\mathrm{eff}}=\diag(R_{\mathrm{vis}},R_G,R_V,R_L).
+ \label{eq:joint}
+\end{equation}
+关闭或被拒绝的块不参与组装。块对角有效噪声模型是实现所采用的权重近似。所有量都关联同一个固定的主滤波先验。联合更新为
+\begin{align}
+ S&=HP^-H^\top+R_{\mathrm{eff}},&
+ K&=P^-H^\top S^{-1},\\
+ \delta\hat x&=Kr,&
+ x^+&=x^-\boxplus\delta\hat x,\qquad
+ P^+=P^--KSK^\top .
+ \label{eq:ekf}
+\end{align}
+通过 Cholesky 分解求解线性系统，不显式形成 $S^{-1}$。原生流形更新按式~\eqref{eq:attitudeerror}施加姿态修正。共享状态列只纳入一次，完整主协方差提供对应交叉协方差。视觉测量压缩在添加不同量纲的辅助行之前完成。
+
+每个图像事件的处理流程如下：
+\begin{enumerate}
+\item 传播并克隆主状态；将 LTV 观测器推进至同一传感器时刻。
+\item 在当前方位修正之前截取满足条件的路标预测，再利用当前方位更新受管理的观测器。
+\item 固定主状态先验，构造 G/V 与锚定 L 残差块，同时构造通过检查的 MSCKF 视觉残差。
+\item 对齐雅可比列，核验帧记录与先验，并执行一次联合 EKF 更新。若辅助块不可用，则保留原生视觉更新。
+\item 为存活锚点保存相机更新后的路标快照，并记录实际施加的辅助分支。
+\end{enumerate}
+
+\section{实验}
+\subsection{数据集、基线与固定实验协议}
+在十条 EuRoC MAV 序列~\cite{burri2016}上评价本文方法，包含四条 Machine Hall 序列（MH\_01、MH\_02、MH\_03、MH\_05）和六条 Vicon 序列（V1\_01--V1\_03、V2\_01--V2\_03）。MH\_04 因此前基线发散而在最终实验前被排除；其结果保留为被排除的基线失败，不计作成功受测序列。
+
+OFF 基线为关闭 LTV 观测器的纯 OpenVINS。G、V、L 分别开启对应辅助分支，GVL 开启全部三个分支。各模式均采用双目跟踪、固定标定、FEJ、主状态 RK4 积分、11 个位姿克隆、每次更新最多 40 个 MSCKF 特征，并关闭原生 SLAM 路标和零速更新。所有 ON 模式使用相同的辅助 LTV 参数：$Q_L=10^{-4}I$、$V_L=10^6I$，配置状态块的初始值为 $P_L=I$。
+
+表~\ref{tab:weights}给出最终信息权重。Machine Hall 与 Vicon 使用不同的固定配置，每类场景中的所有序列使用同一配置。这些序列此前已经用于参数选择，因此本次评价属于固定配置的确认实验。由于单分支模式与组合模式的分支权重不同，五模式表应理解为经过调参的配置对比。
+\input{tables/zh/weights}
+
+归档实现对应源码版本 \texttt{5ce89b93}，固定数据与协议见实验仓库~\cite{experiment2026}。归档包含 50 次新执行的完整输入精度运行，以及 50 次独立串行资源测量。精度运行可以并发调度，但其耗时不参与性能比较。归档中全部 50 条串行轨迹与对应精度轨迹逐字节一致。
+
+ATE 定义为不带尺度的 $SE(3)$ 对齐后位置均方根误差（RMSE）。每次 ON 运行均使用对应 OFF 运行确定的完整匹配评估集合。在估计输出行中，匹配真值覆盖率为 98.756\% 至 99.612\%；各受测配置对 OFF 评估集合的覆盖率均为 100\%。该百分比不将初始化前区间计入估计输出。
+
+此外计算间隔为 1 s 和 5 s 的机体相对平移与旋转 RPE，端点匹配容差为 25 ms。局部位置 RMSE 使用固定 10 s 窗口及全轨迹对齐变换，不对每个窗口重新对齐。匹配评估集合最后 10\% 的误差独立于 P95/P99 误差分布统计。由于 V1\_01 修正后姿态真值的来源尚未核验，其依赖姿态的 RPE 仅作描述性参考。
+
+\subsection{轨迹精度与场景差异}
+表~\ref{tab:ate}给出全轨迹位置 ATE，表~\ref{tab:summary}给出逐序列相对降幅的平均值。归档评价中的全部 50 个配置均完成运行，输出有限、初始化时刻一致，并覆盖完整基线评估集合。
+\input{tables/zh/ate}
+\input{tables/zh/summary}
+
+主要改善出现在 Machine Hall。V 在全部四条受测 MH 序列上降低 ATE，平均相对降幅为 7.410\%。GVL 也改善全部四条序列，平均降幅为 7.578\%。其中 MH\_02 的降幅最大，为 11.535\%；MH\_03 和 MH\_05 分别降低 8.846\% 和 8.494\%。V 将 MH\_05 的 ATE 从 0.276242 m 降至 0.252370 m，约减少 23.873 mm。
+
+G 在 MH 上的改善较小，L 的结果则有升有降，两者平均降幅分别为 0.609\% 与 0.254\%。GVL 在 MH\_02 和 MH\_03 上的 ATE 优于 V，但在 MH\_01 和 MH\_05 上，V 略好。因此，速度分支是实测精度收益的主要来源，完整组合并非在所有序列上都优于单独 V。
+
+Vicon 的变化较小。所有模式的平均相对降幅均低于 0.021\%；V 在 Vicon 上最大的 ATE 增量出现在 V1\_02，约为 0.0134 mm。这些数值应描述为位置 ATE 基本保持不变，而不宜强调微小排名差异。在全部十条序列上，V 和 GVL 的平均相对 ATE 降幅分别为 2.975\% 和 3.041\%。
+
+\placeholder{MH\_02 与 MH\_05 上 OFF/V/GVL 的对齐轨迹及位置误差曲线，使用固定的精确匹配评估集合。}
+
+\subsection{相对运动与局部误差}
+表~\ref{tab:mhmetrics}检验 ATE 改善是否伴随相对运动误差与极端误差的变化。GVL 在全部四条受测 MH 序列上降低 1 s 和 5 s 平移 RPE、末段位置 RMSE 以及最大位置误差。在 MH\_02 上，末段 RMSE 降低 21.48\%，最大对齐位置误差降低 33.01\%。这些指标提供了全轨迹 ATE 之外的补充证据。
+\input{tables/zh/mh_metrics}
+
+总体改善并不意味着每个局部区间都改善。在固定 10 s 窗口分析中，GVL 最大相对增幅出现在 MH\_03 的窗口索引 5，为 9.018\%（3.368 mm）；V 在同一窗口增加 8.552\%（3.193 mm）。GVL 最大绝对窗口增量出现在 V2\_03 的窗口索引 11，约为 5.821 mm。G 最大相对局部增幅出现在 MH\_01 的窗口索引 7，为 6.081\%（2.754 mm）。这些结果与收益一同报告，避免被轨迹级平均值掩盖。
+\placeholder{OFF、V 与 GVL 的固定窗口位置 RMSE 对比，包括 MH\_03 与 V2\_03 上的局部增量。}
+
+\subsection{辅助分支实际使用与计算成本}
+表~\ref{tab:updates}报告 GVL 中各分支实际施加的帧数。每条受测序列上均存在非零更新次数，表明融合实际执行，而非仅开启配置开关。路标成熟度、存活锚点以及重力/速度就绪条件分别检查，因此各分支的次数可能不同。
+\input{tables/zh/updates}
+
+资源测量使用完整串行输入回放、独占性能锁、相同的两个逻辑 CPU 亲和性、经核验的 OpenCV 单线程以及相同诊断等级。模式执行顺序按序列交替正序与逆序。表中先计算每条序列相对于 OFF 的百分比增量，再取中位数汇总。
+\input{tables/zh/cost}
+
+GVL 的全运行 CPU 时间中位增幅为 219.22\%，约为 OFF 的 3.19 倍；相机 API P95 增加 340.78\%，峰值常驻内存增加 21.69\%。在本次测量环境中，GVL 相机 P95 的绝对值约为 27.07 至 44.68 ms。相机 API 不包含完整的 IMU 和输入输出处理路径，因此另行报告全运行资源指标。
+
+每个序列与模式仅有一次配对串行测量，因此这些时间结果属于描述性测量，未提供独立计时置信区间。全部 ON 配对的相机 P95 和峰值内存增幅都超过归档中历史设置的 5\% 和 10\% 开销限制。这些结果反映计算成本，并不否定独立测得的轨迹改善。
+
+\subsection{讨论}
+实验表明，速度辅助分支在 Machine Hall 中具有有效的工作区间，而 Vicon 配置基本保持原有的全轨迹位置精度。场景响应的差异说明，应分别报告两类场景，不能只依赖单一整体平均值。后续还应在未参与调参的序列上评价固定的参数选择规则。
+
+G/L 的额外收益较小，因此是否启用全部分支应结合应用需求和误差指标决定。路标分支参与了大量更新，但单独使用时 ATE 收益较小；更新次数证明执行发生，并不保证收益。此外，各模式权重不同，本次结果尚不能隔离三个分支之间的全部两两交互作用。
+
+当前实现的资源成本较大。G、V、L 与 GVL 的实测成本相近，因此下一步值得对公共观测器及集成路径开展性能剖析；现有测量尚不能将耗时归因到各项内部操作。本文方法应按精度与成本的权衡进行评价，而不宜描述为轻量级增强。
+
+\section{总结}
+本文提出面向滤波式视觉惯性估计器的 LTV 观测器辅助融合方法。将机体系重力方向、速度和时间锚定路标位置表达为误差状态残差，并给出对应雅可比、分支有效性检查和有界路标信息预算。通过检查的辅助块与视觉约束在同一先验下执行一次联合卡尔曼更新。
+
+十条 EuRoC 序列的固定配置确认实验表明，速度融合与完整 GVL 融合均降低了全部四条受测 Machine Hall 序列的 ATE。GVL 的 MH 平均降幅为 7.578\%，同时降低平移 RPE 与末段误差。Vicon 位置 ATE 基本保持不变，部分局部窗口在总体改善时仍有误差增加。CPU 与相机延迟开销较大。后续工作将重点剖析并降低该开销，在独立序列上评价固定配置，并研究各辅助分支何时能够提供与应用相关的收益。
+
+\bibliographystyle{splncs04}
+\bibliography{references}
+\end{document}

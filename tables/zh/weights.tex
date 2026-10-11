@@ -1,0 +1,18 @@
+\begin{table}[tb]
+\caption{固定的场景与模式信息权重。OFF 关闭观测器及全部辅助分支。}\label{tab:weights}
+\centering\small
+\begin{tabular}{llrrr}
+\toprule
+场景 & 模式 & $\alpha_G$ & $\alpha_V$ & $\alpha_L$ \\
+\midrule
+MH & G & 16 & -- & -- \\
+MH & V & -- & 49 & -- \\
+MH & L & -- & -- & 6 \\
+MH & GVL & 2 & 49 & 6 \\
+Vicon & G & 1 & -- & -- \\
+Vicon & V & -- & 6 & -- \\
+Vicon & L & -- & -- & 6 \\
+Vicon & GVL & 1 & 1 & 1 \\
+\bottomrule
+\end{tabular}
+\end{table}
