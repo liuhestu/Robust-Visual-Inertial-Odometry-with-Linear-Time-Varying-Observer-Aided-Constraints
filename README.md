@@ -2,6 +2,8 @@
 
 First English manuscript draft in the Springer LNCS template.
 
+The English draft uses an A4 two-column reading layout, with a full-width title and abstract, multiline long equations, and full-width wide figures/tables. The Chinese reading version remains single-column. Shared English page geometry is configured in manuscript_layout.tex; this is a custom reading layout using the retained LNCS class.
+
 - Author: **liuhe**
 - Affiliation: **Huazhong University of Science and Technology**
 - Email: **liuhe2024@hust.edu.cn**
@@ -23,7 +25,7 @@ A vector framework sketch is drawn directly in TikZ. Three textual figure placeh
 
 ## Build
 
-Requires Python 3, a LaTeX distribution with pdflatex, bibtex, latexmk, Latin Modern, AMS math, booktabs, TikZ/PGF, xurl, and hyperref.
+Requires Python 3, a LaTeX distribution with pdflatex, bibtex, latexmk, Latin Modern, AMS math, booktabs, TikZ/PGF, geometry, adjustbox, xurl, and hyperref.
 
 ```bash
 make

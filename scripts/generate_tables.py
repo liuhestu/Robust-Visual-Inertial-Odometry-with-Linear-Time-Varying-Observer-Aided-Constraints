@@ -15,11 +15,19 @@ def read(name):
     return json.loads((ROOT / "data" / name).read_text())
 
 def table(name, caption, label, cols, header, rows):
-    text = "\\begin{table}[tb]\n\\caption{" + caption + "}\\label{" + label + "}\n"
-    text += "\\centering\\small\n\\begin{tabular}{" + cols + "}\n\\toprule\n"
+    environment = "table*" if name == "ate.tex" else "table"
+    placement = "t" if environment == "table*" else "tb"
+    text = "\\begin{" + environment + "}[" + placement + "]\n\\caption{" + caption + "}\\label{" + label + "}\n"
+    text += "\\centering\\small\n"
+    if environment == "table":
+        text += "\\begin{adjustbox}{max width=\\columnwidth}\n"
+    text += "\\begin{tabular}{" + cols + "}\n\\toprule\n"
     text += header + " \\\\\n\\midrule\n"
     text += "\n".join(" & ".join(row) + " \\\\" for row in rows)
-    text += "\n\\bottomrule\n\\end{tabular}\n\\end{table}\n"
+    text += "\n\\bottomrule\n\\end{tabular}\n"
+    if environment == "table":
+        text += "\\end{adjustbox}\n"
+    text += "\\end{" + environment + "}\n"
     (OUT / name).write_text(text)
 
 def main():

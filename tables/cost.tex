@@ -1,6 +1,7 @@
 \begin{table}[tb]
 \caption{Median per-sequence increases over OFF (\%). Camera P95 measures only the camera API; full-run CPU and wall time include the complete replay. One serial paired measurement per sequence and mode.}\label{tab:cost}
 \centering\small
+\begin{adjustbox}{max width=\columnwidth}
 \begin{tabular}{lrrrr}
 \toprule
 Mode & Camera P95 & CPU time & Wall time & Peak RSS \\
@@ -11,4 +12,5 @@ L & +341.14 & +218.42 & +218.65 & +22.92 \\
 GVL & +340.78 & +219.22 & +219.40 & +21.69 \\
 \bottomrule
 \end{tabular}
+\end{adjustbox}
 \end{table}

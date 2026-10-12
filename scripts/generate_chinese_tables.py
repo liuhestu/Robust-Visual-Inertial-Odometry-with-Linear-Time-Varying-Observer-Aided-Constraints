@@ -19,6 +19,11 @@ table_translations = {
 (root / 'tables/zh').mkdir(exist_ok=True)
 for path in (root / 'tables').glob('*.tex'):
     content = path.read_text()
+    # Chinese remains single-column, regardless of the English float layout.
+    content = content.replace(r'\begin{table*}[t]', r'\begin{table}[tb]')
+    content = content.replace(r'\end{table*}', r'\end{table}')
+    content = content.replace(r"\begin{adjustbox}{max width=\columnwidth}" + "\n", "")
+    content = content.replace(r"\end{adjustbox}" + "\n", "")
     for old,new in table_translations.items():
         content = content.replace(old,new)
     assert re.findall(r'(?<![A-Za-z])[-+]?\d+\.\d+',content) == re.findall(r'(?<![A-Za-z])[-+]?\d+\.\d+',path.read_text())

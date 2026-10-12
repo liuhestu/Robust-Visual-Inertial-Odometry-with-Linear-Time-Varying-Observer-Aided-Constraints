@@ -1,5 +1,6 @@
 % First manuscript draft. Experimental values are generated from data/*.json.
-\documentclass[a4paper,runningheads]{llncs}
+\documentclass[a4paper,runningheads,twocolumn]{llncs}
+\input{manuscript_layout}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
 \usepackage{amsmath,amssymb,bm}
@@ -25,12 +26,17 @@
 \authorrunning{liuhe}
 \institute{Huazhong University of Science and Technology, Wuhan, China\\
 \email{liuhe2024@hust.edu.cn}}
+\twocolumn[
+\begin{@twocolumnfalse}
 \maketitle
 
 \begin{abstract}
 Visual-inertial odometry combines camera observations with inertial measurements to estimate motion, yet the contribution of additional motion constraints depends on their formulation and fusion strength. This paper investigates a linear time-varying (LTV) observer as an auxiliary estimator for a multi-state constraint Kalman filter. Body-frame gravity, velocity, and landmark estimates are converted into three error-state measurement models. Gravity is constrained on a two-dimensional tangent plane, velocity couples attitude and world-frame velocity, and landmark constraints connect the current pose with a historical pose clone. Valid auxiliary blocks are assembled with visual residuals using a common prior and applied in one Kalman update. A bounded feature interface and a per-frame landmark information budget control the auxiliary supply. On ten EuRoC sequences, frozen scene- and mode-specific configurations are evaluated using trajectory error, relative motion error, local windows, update counts, and serial runtime measurements. Velocity and full fusion reduce position ATE on all four evaluated Machine Hall sequences, with mean relative reductions of 7.410\% and 7.578\%, respectively, while Vicon changes remain small. The measured computational overhead is substantial, identifying an important implementation trade-off.
 \keywords{Visual-inertial odometry \and Linear time-varying observer \and Error-state Kalman filter \and Auxiliary constraints}
 \end{abstract}
+\vspace{6mm}
+\end{@twocolumnfalse}
+]
 
 \section{Introduction}
 Reliable motion estimation is essential for autonomous robots operating without an external positioning system. Cameras provide geometric constraints, while an inertial measurement unit (IMU) supplies high-rate rotational and translational motion information. Their complementary characteristics motivate visual-inertial odometry (VIO). Nevertheless, motion estimation remains sensitive to the available feature geometry, motion excitation, inertial bias, and the relative strength of the fused constraints.
@@ -83,33 +89,39 @@ All camera extrinsics and timestamps are transformed into the same body-frame co
 \subsection{Body-Frame LTV Observer}
 Following the body-frame formulation in~\cite{wang2024}, introduce $v_B=Rv$ and $\eta=Rg_W$. Their dynamics, together with those of the static landmarks, are
 \begin{equation}
- \dot\ell_i=-\sk{\omega}\ell_i-v_B,\quad
- \dot v_B=-\sk{\omega}v_B+\eta+a,\quad
- \dot\eta=-\sk{\omega}\eta .
+ \begin{aligned}
+ \dot\ell_i&=-\sk{\omega}\ell_i-v_B,\\
+ \dot v_B&=-\sk{\omega}v_B+\eta+a,\\
+ \dot\eta&=-\sk{\omega}\eta .
+ \end{aligned}
  \label{eq:ltvdynamics}
 \end{equation}
 For $N$ managed landmarks, let
 \begin{equation}
- z=[\ell_1^\top,\ldots,\ell_N^\top,v_B^\top,\eta^\top]^\top,\qquad
+ \begin{gathered}
+ z=[\ell_1^\top,\ldots,\ell_N^\top,v_B^\top,\eta^\top]^\top,\\
  \dot z=Az+Ba,\quad y=Cz .
+ \end{gathered}
  \label{eq:ltvstate}
 \end{equation}
 Writing $\Omega_N=\diag(\sk{\omega},\ldots,\sk{\omega})$ and
 $\Gamma=\bm{1}_N\otimes I_3$, the matrices are
 \begin{equation}
+ \begin{gathered}
  A=\begin{bmatrix}
  -\Omega_N&-\Gamma&0\\
  0&-\sk{\omega}&I_3\\
  0&0&-\sk{\omega}
- \end{bmatrix},\quad
+ \end{bmatrix},\\
  B=\begin{bmatrix}0\\I_3\\0\end{bmatrix},\quad
  C=\begin{bmatrix}\diag(\Pi_1,\ldots,\Pi_N)&0&0\end{bmatrix}.
+ \end{gathered}
  \label{eq:ltvmatrices}
 \end{equation}
 Only currently observed landmarks contribute rows to $C$. The observer and its Riccati weighting matrix $P_L$ satisfy
 \begin{align}
- \dot{\hat z}&=A\hat z+Ba+K_L(y-C\hat z),&
- K_L&=P_LC^\top Q_L, \label{eq:observer}\\
+ \dot{\hat z}&=A\hat z+Ba+K_L(y-C\hat z),\label{eq:observer}\\
+ K_L&=P_LC^\top Q_L, \notag\\
  \dot P_L&=AP_L+P_LA^\top-P_LC^\top Q_LCP_L+V_L .
  \label{eq:riccati}
 \end{align}
@@ -120,9 +132,11 @@ The implementation propagates between IMU samples and applies bearing correction
 \subsection{Error-State Filtering and MSCKF Visual Constraints}
 The VIO state contains the current inertial state and historical IMU pose clones:
 \begin{equation}
- x=(R,p,v,b_g,b_a,x_{c_1},\ldots,x_{c_M}),\qquad
- \delta x_I=[\delta\theta^\top,\delta p^\top,\delta v^\top,
+ \begin{aligned}
+ x&=(R,p,v,b_g,b_a,x_{c_1},\ldots,x_{c_M}),\\
+ \delta x_I&=[\delta\theta^\top,\delta p^\top,\delta v^\top,
               \delta b_g^\top,\delta b_a^\top]^\top .
+ \end{aligned}
 \end{equation}
 Our attitude error is defined by
 \begin{equation}
@@ -155,7 +169,7 @@ Accepted feature blocks are stacked and compressed before the EKF update. FEJ ev
 \subsection{Common-Prior Fusion Interface}
 Figure~\ref{fig:framework} shows the integration. The IMU adapter advances the observer to the image time, using bracketed samples and the calibrated bias-corrected inputs. The feature interface supplies tracked bearings and geometric initialization. The observer produces $\hat\eta$, $\hat v_B$, and $\hat\ell_i$, while the main filter supplies its prior state, covariance, and live pose clones.
 
-\begin{figure}[tb]
+\begin{figure*}[t]
 \centering
 \begin{tikzpicture}[font=\small,
  box/.style={draw,rounded corners=2pt,align=center,minimum height=9mm,text width=42mm},
@@ -177,7 +191,7 @@ Figure~\ref{fig:framework} shows the integration. The IMU adapter advances the o
 \end{tikzpicture}
 \caption{LTV observer-aided VIO. Geometric seeds, inertial biases, and the common filter prior are supplied through the integration interface. Auxiliary branches may be rejected individually.}
 \label{fig:framework}
-\end{figure}
+\end{figure*}
 
 Each auxiliary block is described by $(r_j,H_j,R_j)$ and an ordered set of state variables. Jacobian columns are mapped into the native filter state without duplicating shared variables. A frame record identifies the image time, corresponding IMU time, observer epoch, and sequence number. Before submission, the implementation verifies that the main prior, its FEJ values, covariance, and clone set still match the values used to construct the block. An accepted record is consumed once.
 
@@ -219,8 +233,10 @@ Corrections can also affect position and inertial biases through the main filter
 \subsection{Temporally Anchored Landmark Constraint}
 For a tracked landmark $i$, store its observer position $\hat\ell_{i,a}$ at a historical image time $t_a$ whose IMU pose clone remains in the filter. Given the current pose $(R_t,p_t)$ and anchor pose $(R_a,p_a)$, its predicted current body-frame position is
 \begin{equation}
- h_{L,i}(x)=R_t\big(R_a^\top\hat\ell_{i,a}+p_a-p_t\big),\qquad
- r_{L,i}=\hat\ell_{i,t}^{-}-h_{L,i}(\hat x).
+ \begin{aligned}
+ h_{L,i}(x)&=R_t\big(R_a^\top\hat\ell_{i,a}+p_a-p_t\big),\\
+ r_{L,i}&=\hat\ell_{i,t}^{-}-h_{L,i}(\hat x).
+ \end{aligned}
  \label{eq:landmark}
 \end{equation}
 Here $\hat\ell_{i,t}^{-}$ is captured after observer inertial propagation and before the current bearing correction. The historical anchor is a stored post-camera observer snapshot. Both landmark estimates remain fixed when differentiating the main-state prediction. For the local column order $[\delta\theta_t,\delta p_t,\delta\theta_a,\delta p_a]$, the prediction Jacobian is
@@ -236,9 +252,11 @@ This branch constrains relative pose geometry. It neither treats $\hat\ell_{i,a}
 
 To obtain bounded and reproducible auxiliary supply, a candidate must be mature, velocity-ready, associated with a live anchor, and geometrically valid. The frozen implementation requires
 \begin{equation}
- 0.20\leq t-t_a\leq0.55~\mathrm{s},\qquad
+ \begin{gathered}
+ 0.20\leq t-t_a\leq0.55~\mathrm{s},\\
  \frac{\norm{\hat\ell_{i,t}^{-}-h_{L,i}(\hat x)}}
  {\max(\norm{h_{L,i}(\hat x)},0.1~\mathrm{m})}\leq0.02 .
+ \end{gathered}
  \label{eq:lvalid}
 \end{equation}
 Positive camera depth and feature association are checked. Candidates are selected deterministically, with at most $m_{\max}=2$ points per frame.
@@ -247,9 +265,9 @@ The landmark branch uses a range- and age-dependent effective variance,
 \begin{align}
  s_{i,0}^2&=\big(\sigma_{L,\min}+0.02\norm{\hat\ell_{i,t}^{-}}\big)^2
        \left(1+\frac{t-t_a}{0.55~\mathrm{s}}\right),\\
- q_i&=\tr(H_{L,i}P_i^-H_{L,i}^{\top}),\qquad
- s_i^2=\max\left(s_{i,0}^2,\frac{q_i}{\beta_L/m_{\max}}\right),\qquad
- R_{L,i}=s_i^2 I_3 .
+ q_i&=\tr(H_{L,i}P_i^-H_{L,i}^{\top}),\notag\\
+ s_i^2&=\max\left(s_{i,0}^2,\frac{q_i}{\beta_L/m_{\max}}\right),\notag\\
+ R_{L,i}&=s_i^2 I_3 .
  \label{eq:lbudget}
 \end{align}
 $P_i^-$ is the marginal main covariance for the current and anchor pose blocks. The cap ensures $q_i/s_i^2\leq\beta_L/m_{\max}$. The variance is modified before computing the Kalman gain; the resulting state correction is not clipped afterward. The base setting is $\sigma_{L,\min}=0.5$ m and $\beta_L=0.01$. At landmark strength $\alpha_L$, these become $0.5/\sqrt{\alpha_L}$ m and $0.01\alpha_L$, respectively. This is an effective weighting rule, not a substitution of the observer Riccati matrix for measurement noise.
@@ -266,18 +284,20 @@ where $\tau_G=9.21034$ and $\tau_V=11.34487$, corresponding to 99\% chi-square t
 
 After visual compression and branch selection, the accepted blocks are assembled as
 \begin{equation}
+ \begin{gathered}
  r=\begin{bmatrix}r_{\mathrm{vis}}\\r_G\\r_V\\r_L\end{bmatrix},\qquad
- H=\begin{bmatrix}H_{\mathrm{vis}}\\H_G\\H_V\\H_L\end{bmatrix},\qquad
+ H=\begin{bmatrix}H_{\mathrm{vis}}\\H_G\\H_V\\H_L\end{bmatrix},\\
  R_{\mathrm{eff}}=\diag(R_{\mathrm{vis}},R_G,R_V,R_L).
+ \end{gathered}
  \label{eq:joint}
 \end{equation}
 Disabled or rejected blocks are omitted. This block-diagonal effective noise model is the weighting approximation used by the implementation. All quantities are associated with one frozen main-filter prior. The joint update is
 \begin{align}
- S&=HP^-H^\top+R_{\mathrm{eff}},&
- K&=P^-H^\top S^{-1},\\
- \delta\hat x&=Kr,&
- x^+&=x^-\boxplus\delta\hat x,\qquad
- P^+=P^--KSK^\top .
+ S&=HP^-H^\top+R_{\mathrm{eff}},\\
+ K&=P^-H^\top S^{-1},\notag\\
+ \delta\hat x&=Kr,\notag\\
+ x^+&=x^-\boxplus\delta\hat x,\notag\\
+ P^+&=P^--KSK^\top .
  \label{eq:ekf}
 \end{align}
 Linear systems are solved by Cholesky factorization rather than explicitly forming $S^{-1}$. The native manifold update applies the attitude correction according to~\eqref{eq:attitudeerror}. Shared state columns are included once, and the full main covariance supplies the corresponding cross-covariances. Visual measurement compression is completed before adding the mixed-unit auxiliary rows.
